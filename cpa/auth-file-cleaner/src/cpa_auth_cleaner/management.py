@@ -38,7 +38,7 @@ def fetch_management_auth_files(base_url, management_key, timeout=15):
     return payload
 
 
-def management_key_from_args(value, env_name):
+def management_key_from_args(value, env_name, env_file=""):
     if value:
         return value
     if env_name:
@@ -46,8 +46,54 @@ def management_key_from_args(value, env_name):
         if direct_value:
             return direct_value
         if env_name == "CPA_SECRET_KEY":
-            return os.environ.get("CPA_MANAGEMENT_KEY", "")
+            legacy_value = os.environ.get("CPA_MANAGEMENT_KEY", "")
+            if legacy_value:
+                return legacy_value
+    if env_file:
+        return management_key_from_env_file(env_file, env_name)
     return ""
+
+
+def management_key_from_env_file(env_file, env_name):
+    path = Path(env_file).expanduser()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ""
+
+    keys = [env_name]
+    if env_name == "CPA_SECRET_KEY":
+        keys.append("CPA_MANAGEMENT_KEY")
+    values = parse_env_lines(lines)
+    for key in keys:
+        value = values.get(key, "")
+        if value:
+            return value
+    return ""
+
+
+def parse_env_lines(lines):
+    values = {}
+    for line in lines:
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        if text.startswith("export "):
+            text = text[len("export "):].strip()
+        if "=" not in text:
+            continue
+        key, raw_value = text.split("=", 1)
+        key = key.strip()
+        value = unquote_env_value(raw_value.strip())
+        if key:
+            values[key] = value
+    return values
+
+
+def unquote_env_value(value):
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    return value
 
 
 def scan_management_payload(payload, match_mode="invalidated", auth_dir=None):

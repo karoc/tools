@@ -326,6 +326,54 @@ class CPAAuthCleanerTests(unittest.TestCase):
             if old_legacy is not None:
                 os.environ["CPA_MANAGEMENT_KEY"] = old_legacy
 
+    def test_management_key_can_be_read_from_env_file(self) -> None:
+        old_secret = os.environ.pop("CPA_SECRET_KEY", None)
+        old_legacy = os.environ.pop("CPA_MANAGEMENT_KEY", None)
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                env_file = Path(temp) / "cpa.env"
+                env_file.write_text("export CPA_SECRET_KEY='file-value'\n", encoding="utf-8")
+
+                self.assertEqual(
+                    management_key_from_args("", "CPA_SECRET_KEY", env_file=str(env_file)),
+                    "file-value",
+                )
+        finally:
+            if old_secret is not None:
+                os.environ["CPA_SECRET_KEY"] = old_secret
+            if old_legacy is not None:
+                os.environ["CPA_MANAGEMENT_KEY"] = old_legacy
+
+    def test_management_key_missing_error_mentions_export(self) -> None:
+        env = os.environ.copy()
+        env.pop("CPA_SECRET_KEY", None)
+        env.pop("CPA_MANAGEMENT_KEY", None)
+        with tempfile.TemporaryDirectory() as temp:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "tools.py"),
+                    "cpa-auth-file-cleaner",
+                    "--source",
+                    "management",
+                    "--management-url",
+                    "http://127.0.0.1:8317",
+                    "--management-env-file",
+                    str(Path(temp) / "missing.env"),
+                    "--auth-dir",
+                    temp,
+                ],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                env=env,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("management key is required", result.stderr)
+        self.assertIn("export CPA_SECRET_KEY", result.stderr)
+
     def test_management_problem_mode_matches_any_status_message(self) -> None:
         payload = {
             "files": [

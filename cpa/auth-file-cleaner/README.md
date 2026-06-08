@@ -49,6 +49,20 @@ cd cpa/auth-file-cleaner
 
 管理模式默认使用 CPA 项目常用地址 `http://127.0.0.1:8317`，管理密钥默认从 `CPA_SECRET_KEY` 环境变量读取。如果 CPA 运行在 Docker 映射端口或反向代理后面，请显式传入 `--management-url`。
 
+如果当前 shell 中已经有 `CPA_SECRET_KEY` 但命令仍提示缺少管理密钥，通常是变量没有导出给 Python 子进程。先执行：
+
+```bash
+export CPA_SECRET_KEY
+python3 -c 'import os; print("python sees key:", bool(os.environ.get("CPA_SECRET_KEY")))'
+```
+
+也可以把密钥写入 env 文件，普通命令和 systemd 服务都会默认读取 `/etc/cpa-auth-file-cleaner.env`：
+
+```bash
+sudo install -m 600 /dev/null /etc/cpa-auth-file-cleaner.env
+sudo sh -c 'printf "%s\n" "CPA_SECRET_KEY=your-management-key" > /etc/cpa-auth-file-cleaner.env'
+```
+
 只扫描授权失效标记：
 
 ```bash

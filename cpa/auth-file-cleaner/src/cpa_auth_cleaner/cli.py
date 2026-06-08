@@ -72,6 +72,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--management-env-file",
+        default=DEFAULT_ENV_FILE,
+        help=(
+            "Optional env file used when the management key env var is not exported. "
+            f"Default: {DEFAULT_ENV_FILE}."
+        ),
+    )
+    parser.add_argument(
         "--match",
         choices=("invalidated", "problem", "warning"),
         default="invalidated",
@@ -238,7 +246,30 @@ def prepare_management_key(args):
         return ""
     if not args.management_url.strip():
         raise ValueError("--management-url must not be empty when --source=management")
-    return management_key_from_args(args.management_key, args.management_key_env)
+    key = management_key_from_args(
+        args.management_key,
+        args.management_key_env,
+        env_file=args.management_env_file,
+    )
+    if not key:
+        raise ValueError(missing_management_key_message(args))
+    return key
+
+
+def missing_management_key_message(args):
+    sources = [
+        "--management-key",
+        "exported environment variable %s" % args.management_key_env,
+    ]
+    if args.management_key_env == "CPA_SECRET_KEY":
+        sources.append("exported environment variable CPA_MANAGEMENT_KEY")
+    if args.management_env_file:
+        sources.append("env file %s" % args.management_env_file)
+    return (
+        "management key is required; tried %s. If your shell shows %s as set, "
+        "run `export %s` before executing the tool."
+        % (", ".join(sources), args.management_key_env, args.management_key_env)
+    )
 
 
 def scan_current(args, auth_dir, management_key):
