@@ -9,6 +9,7 @@ from .management import (
     management_key_from_args,
     scan_management_payload,
 )
+from .execution import execution_verification, quarantine_summary
 from .mover import default_move_dir, move_invalid_files, validate_move_dir
 from .reporting import render_json_report, render_text_report
 from .scanner import scan_auth_dir
@@ -46,7 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--management-key",
         default="",
-        help="Management key. Prefer --management-key-env to avoid exposing secrets in shell history.",
+        help=(
+            "Management key. Prefer --management-key-env to avoid exposing secrets "
+            "in shell history."
+        ),
     )
     parser.add_argument(
         "--management-key-env",
@@ -88,34 +92,77 @@ def main(argv=None):
         else default_move_dir(auth_dir)
     )
     dry_run = not args.execute
+    post_report = None
+    post_scan_error = ""
+    quarantine = None
+    verification = None
 
     try:
         validate_move_dir(auth_dir, move_dir)
-        if args.source == "management":
-            if not args.management_url.strip():
-                raise ValueError("--management-url is required when --source=management")
-            key = management_key_from_args(args.management_key, args.management_key_env)
-            payload = fetch_management_auth_files(args.management_url, key)
-            report = scan_management_payload(payload, match_mode=args.match, auth_dir=auth_dir)
-        else:
-            report = scan_auth_dir(auth_dir, recursive=not args.no_recursive)
+        key = prepare_management_key(args)
+        report = scan_current(args, auth_dir, key)
         records = move_invalid_files(
             auth_dir=auth_dir,
             invalid_files=report.invalid_files,
             move_dir=move_dir,
             dry_run=dry_run,
         )
-    except (OSError, ValueError) as exc:
+        if not dry_run:
+            quarantine = quarantine_summary(move_dir, records)
+            try:
+                post_report = scan_current(args, auth_dir, key)
+            except (OSError, ValueError, RuntimeError) as exc:
+                post_scan_error = str(exc)
+            verification = execution_verification(
+                records=records,
+                post_report=post_report,
+                quarantine=quarantine,
+                post_scan_error=post_scan_error,
+            )
+    except (OSError, ValueError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     output = (
-        render_json_report(report, records, dry_run=dry_run)
+        render_json_report(
+            report,
+            records,
+            dry_run=dry_run,
+            move_dir=move_dir,
+            post_report=post_report,
+            post_scan_error=post_scan_error,
+            quarantine=quarantine,
+            verification=verification,
+        )
         if args.json
-        else render_text_report(report, records, dry_run=dry_run)
+        else render_text_report(
+            report,
+            records,
+            dry_run=dry_run,
+            move_dir=move_dir,
+            post_report=post_report,
+            post_scan_error=post_scan_error,
+            quarantine=quarantine,
+            verification=verification,
+        )
     )
     print(output)
     return 0
+
+
+def prepare_management_key(args):
+    if args.source != "management":
+        return ""
+    if not args.management_url.strip():
+        raise ValueError("--management-url is required when --source=management")
+    return management_key_from_args(args.management_key, args.management_key_env)
+
+
+def scan_current(args, auth_dir, management_key):
+    if args.source == "management":
+        payload = fetch_management_auth_files(args.management_url, management_key)
+        return scan_management_payload(payload, match_mode=args.match, auth_dir=auth_dir)
+    return scan_auth_dir(auth_dir, recursive=not args.no_recursive)
 
 
 if __name__ == "__main__":

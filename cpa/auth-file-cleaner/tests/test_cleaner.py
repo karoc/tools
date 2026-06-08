@@ -135,7 +135,54 @@ class CPAAuthCleanerTests(unittest.TestCase):
             payload = json.loads(result.stdout)
             self.assertEqual(payload["mode"], "dry-run")
             self.assertEqual(payload["invalidated_count"], 1)
+            self.assertEqual(payload["move_summary"]["planned_count"], 1)
+            self.assertIsNone(payload["post_scan"])
+            self.assertIsNone(payload["quarantine_summary"])
+            self.assertIsNone(payload["verification"]["ok"])
             self.assertTrue((auth_dir / "invalid.json").exists())
+
+    def test_unified_entry_execute_verifies_post_scan_and_quarantine(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            auth_dir = Path(temp) / "auths"
+            move_dir = Path(temp) / "quarantine"
+            auth_dir.mkdir()
+            write_json(auth_dir / "invalid.json", invalid_payload())
+            write_json(auth_dir / "valid.json", {"type": "codex"})
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "tools.py"),
+                    "cpa-auth-file-cleaner",
+                    "--auth-dir",
+                    str(auth_dir),
+                    "--move-dir",
+                    str(move_dir),
+                    "--execute",
+                    "--json",
+                ],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["mode"], "execute")
+            self.assertEqual(payload["invalidated_count"], 1)
+            self.assertEqual(payload["move_summary"]["planned_count"], 1)
+            self.assertEqual(payload["move_summary"]["moved_count"], 1)
+            self.assertEqual(payload["move_summary"]["not_moved_count"], 0)
+            self.assertEqual(payload["post_scan"]["invalidated_count"], 0)
+            self.assertEqual(payload["quarantine_summary"]["directory"], str(move_dir))
+            self.assertEqual(payload["quarantine_summary"]["file_count"], 1)
+            self.assertEqual(payload["quarantine_summary"]["json_file_count"], 1)
+            self.assertEqual(payload["quarantine_summary"]["confirmed_destination_count"], 1)
+            self.assertTrue(payload["verification"]["ok"])
+            self.assertFalse((auth_dir / "invalid.json").exists())
+            self.assertTrue((move_dir / "invalid.json").exists())
+            self.assertTrue((auth_dir / "valid.json").exists())
 
     def test_management_problem_mode_matches_any_status_message(self) -> None:
         payload = {
@@ -151,7 +198,10 @@ class CPAAuthCleanerTests(unittest.TestCase):
 
         self.assertEqual(report.source, "management")
         self.assertEqual(report.scanned_json_files, 4)
-        self.assertEqual([item.relative_path for item in report.invalid_files], [Path("healthy.json"), Path("bad.json")])
+        self.assertEqual(
+            [item.relative_path for item in report.invalid_files],
+            [Path("healthy.json"), Path("bad.json")],
+        )
 
     def test_management_warning_mode_ignores_healthy_status_messages(self) -> None:
         payload = {
@@ -170,7 +220,11 @@ class CPAAuthCleanerTests(unittest.TestCase):
         payload = {
             "files": [
                 {"name": "quota.json", "status_message": "quota exhausted"},
-                {"name": "invalid.json", "status_message": INVALIDATED_ERROR_MESSAGE, "path": "/auths/invalid.json"},
+                {
+                    "name": "invalid.json",
+                    "status_message": INVALIDATED_ERROR_MESSAGE,
+                    "path": "/auths/invalid.json",
+                },
             ]
         }
 
@@ -211,7 +265,10 @@ class CPAAuthCleanerTests(unittest.TestCase):
         quota_limited = json.dumps(
             {
                 "error": {
-                    "message": "You exceeded your current quota, please check your plan and billing details.",
+                    "message": (
+                        "You exceeded your current quota, please check your plan "
+                        "and billing details."
+                    ),
                     "type": "insufficient_quota",
                     "code": "usage_limit_reached",
                 }
