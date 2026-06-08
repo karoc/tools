@@ -86,16 +86,67 @@ def matches_management_status(item, match_mode):
 
 
 def is_invalidated_status(item, message):
-    lowered = message.lower()
-    if message == INVALIDATED_ERROR_MESSAGE:
+    detail = status_error_detail(item, message)
+    detail_message = detail.get("message", "")
+    detail_type = detail.get("type", "").lower()
+    detail_code = detail.get("code", "").lower()
+    lowered_detail = detail_message.lower()
+    lowered_raw = message.lower()
+    lowered_combined = " ".join([lowered_detail, lowered_raw]).strip()
+
+    if detail_message == INVALIDATED_ERROR_MESSAGE or message == INVALIDATED_ERROR_MESSAGE:
         return True
-    if "authentication token has been invalidated" in lowered:
+    if (
+        detail_code == INVALIDATED_ERROR_CODE
+        and detail_type == INVALIDATED_ERROR_TYPE
+        and "invalidated" in lowered_combined
+    ):
         return True
-    if "invalidated" in lowered and "authentication" in lowered:
+    if "authentication token has been invalidated" in lowered_combined:
         return True
-    code = string_value(item, "code").lower()
-    error_type = string_value(item, "type").lower()
-    return code == INVALIDATED_ERROR_CODE and error_type == INVALIDATED_ERROR_TYPE
+    if "invalidated" in lowered_combined and "authentication" in lowered_combined:
+        return True
+    return False
+
+
+def status_error_detail(item, message):
+    raw_error = item.get("error")
+    if isinstance(raw_error, dict):
+        detail = error_detail_from_mapping(raw_error)
+        if any(detail.values()):
+            return detail
+
+    parsed = parse_status_message(message)
+    if isinstance(parsed, dict):
+        raw_error = parsed.get("error")
+        if isinstance(raw_error, dict):
+            detail = error_detail_from_mapping(raw_error)
+            if any(detail.values()):
+                return detail
+
+        detail = error_detail_from_mapping(parsed)
+        if any(detail.values()):
+            return detail
+
+    return {"message": message, "type": "", "code": ""}
+
+
+def parse_status_message(message):
+    text = message.strip()
+    if not text or text[0] not in ("{", "["):
+        return None
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
+
+
+def error_detail_from_mapping(mapping):
+    return {
+        "message": string_value(mapping, "message"),
+        "type": string_value(mapping, "type"),
+        "code": string_value(mapping, "code"),
+    }
 
 
 def build_management_candidate(base, item, match_mode):
@@ -104,6 +155,7 @@ def build_management_candidate(base, item, match_mode):
     path = Path(path_text) if path_text else base / name
     status = string_value(item, "status")
     message = status_message(item)
+    detail = status_error_detail(item, message)
     reason = management_reason(item, match_mode)
 
     return InvalidAuthFile(
@@ -112,9 +164,9 @@ def build_management_candidate(base, item, match_mode):
         provider=string_value(item, "type") or string_value(item, "provider") or None,
         email=string_value(item, "email") or None,
         project_id=string_value(item, "project_id") or None,
-        error_message=message or status or reason,
-        error_type="management_status",
-        error_code=reason,
+        error_message=detail.get("message") or message or status or reason,
+        error_type=detail.get("type") or "management_status",
+        error_code=detail.get("code") or reason,
     )
 
 
@@ -156,4 +208,3 @@ def bool_value(item, key):
 
 def is_runtime_only(item):
     return bool_value(item, "runtime_only") or bool_value(item, "runtimeOnly")
-

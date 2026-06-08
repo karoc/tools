@@ -180,10 +180,54 @@ class CPAAuthCleanerTests(unittest.TestCase):
         self.assertEqual(report.invalid_files[0].path, Path("/auths/invalid.json"))
         self.assertEqual(report.invalid_files[0].error_code, INVALIDATED_ERROR_CODE)
 
+    def test_management_invalidated_mode_parses_status_message_json(self) -> None:
+        exact_invalidated = status_error_json(INVALIDATED_ERROR_MESSAGE)
+        alternate_invalidated = status_error_json(
+            "Encountered invalidated oauth token for user, failing request"
+        )
+        quota_limited = json.dumps(
+            {
+                "error": {
+                    "message": "You exceeded your current quota, please check your plan and billing details.",
+                    "type": "insufficient_quota",
+                    "code": "usage_limit_reached",
+                }
+            }
+        )
+        payload = {
+            "files": [
+                {"name": "exact.json", "status_message": exact_invalidated, "type": "codex"},
+                {"name": "alternate.json", "statusMessage": alternate_invalidated, "type": "codex"},
+                {"name": "quota.json", "status_message": quota_limited, "type": "codex"},
+            ]
+        }
+
+        report = scan_management_payload(payload, match_mode="invalidated", auth_dir="/auths")
+
+        self.assertEqual(
+            [item.relative_path for item in report.invalid_files],
+            [Path("exact.json"), Path("alternate.json")],
+        )
+        self.assertEqual(report.invalid_files[0].error_message, INVALIDATED_ERROR_MESSAGE)
+        self.assertEqual(report.invalid_files[0].error_type, INVALIDATED_ERROR_TYPE)
+        self.assertEqual(report.invalid_files[0].error_code, INVALIDATED_ERROR_CODE)
+
 
 def write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def status_error_json(message):
+    return json.dumps(
+        {
+            "error": {
+                "message": message,
+                "type": INVALIDATED_ERROR_TYPE,
+                "code": INVALIDATED_ERROR_CODE,
+            }
+        }
+    )
 
 
 if __name__ == "__main__":
