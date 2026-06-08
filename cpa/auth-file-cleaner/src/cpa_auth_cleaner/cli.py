@@ -1,7 +1,5 @@
 """Command line interface for the CPA auth file cleaner."""
 
-from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path
@@ -47,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -83,4 +81,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

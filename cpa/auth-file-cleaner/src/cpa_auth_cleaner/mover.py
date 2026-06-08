@@ -1,10 +1,10 @@
 """Move invalidated CPA auth files out of the active auth directory."""
 
-from __future__ import annotations
-
+import os
 import shutil
 from datetime import datetime
 from pathlib import Path
+from typing import Tuple
 
 from .models import InvalidAuthFile, MoveRecord
 
@@ -15,8 +15,8 @@ def default_move_dir(auth_dir: Path) -> Path:
 
 
 def validate_move_dir(auth_dir: Path, move_dir: Path) -> None:
-    resolved_auth_dir = auth_dir.expanduser().resolve()
-    resolved_move_dir = move_dir.expanduser().resolve()
+    resolved_auth_dir = normalized_path(auth_dir)
+    resolved_move_dir = normalized_path(move_dir)
     if resolved_move_dir == resolved_auth_dir:
         raise ValueError("move directory must not be the auth directory")
     if is_relative_to(resolved_move_dir, resolved_auth_dir):
@@ -25,13 +25,13 @@ def validate_move_dir(auth_dir: Path, move_dir: Path) -> None:
 
 def move_invalid_files(
     auth_dir: Path,
-    invalid_files: tuple[InvalidAuthFile, ...],
+    invalid_files: Tuple[InvalidAuthFile, ...],
     move_dir: Path,
     dry_run: bool,
-) -> tuple[MoveRecord, ...]:
+) -> Tuple[MoveRecord, ...]:
     validate_move_dir(auth_dir, move_dir)
 
-    records: list[MoveRecord] = []
+    records = []
     for item in invalid_files:
         destination = unique_destination(move_dir / item.relative_path)
         records.append(MoveRecord(source=item.path, destination=destination, moved=not dry_run))
@@ -64,3 +64,6 @@ def is_relative_to(path: Path, base: Path) -> bool:
     except ValueError:
         return False
 
+
+def normalized_path(path: Path) -> Path:
+    return Path(os.path.abspath(os.path.expanduser(str(path))))

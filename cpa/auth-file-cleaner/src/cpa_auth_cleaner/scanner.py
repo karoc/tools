@@ -1,11 +1,9 @@
 """Scan CPA auth JSON files for invalidated authentication markers."""
 
-from __future__ import annotations
-
 import json
 import os
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Dict, Iterable, List, Optional
 
 from .constants import (
     INVALIDATED_ERROR_CODE,
@@ -22,8 +20,8 @@ def scan_auth_dir(auth_dir: Path, recursive: bool = True) -> ScanReport:
     if not auth_dir.is_dir():
         raise NotADirectoryError(f"auth path is not a directory: {auth_dir}")
 
-    invalid_files: list[InvalidAuthFile] = []
-    skipped_files: list[SkippedFile] = []
+    invalid_files = []  # type: List[InvalidAuthFile]
+    skipped_files = []  # type: List[SkippedFile]
     scanned_json_files = 0
 
     for path in iter_json_files(auth_dir, recursive=recursive):
@@ -55,7 +53,7 @@ def iter_json_files(auth_dir: Path, recursive: bool) -> Iterable[Path]:
             yield entry
 
 
-def read_json_object(path: Path, skipped_files: list[SkippedFile]) -> dict[str, Any] | None:
+def read_json_object(path: Path, skipped_files: List[SkippedFile]) -> Optional[Dict[str, Any]]:
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -78,7 +76,7 @@ def read_json_object(path: Path, skipped_files: list[SkippedFile]) -> dict[str, 
     return payload
 
 
-def is_invalidated_auth_payload(payload: dict[str, Any]) -> bool:
+def is_invalidated_auth_payload(payload: Dict[str, Any]) -> bool:
     error = payload.get("error")
     if not isinstance(error, dict):
         return False
@@ -90,7 +88,7 @@ def is_invalidated_auth_payload(payload: dict[str, Any]) -> bool:
 
 
 def build_invalid_auth_file(
-    auth_dir: Path, path: Path, payload: dict[str, Any]
+    auth_dir: Path, path: Path, payload: Dict[str, Any]
 ) -> InvalidAuthFile:
     error = payload["error"]
     return InvalidAuthFile(
@@ -105,7 +103,7 @@ def build_invalid_auth_file(
     )
 
 
-def string_field(payload: dict[str, Any], key: str) -> str | None:
+def string_field(payload: Dict[str, Any], key: str) -> Optional[str]:
     value = payload.get(key)
     if isinstance(value, str) and value.strip():
         return value
@@ -117,4 +115,3 @@ def safe_relative_path(base: Path, path: Path) -> Path:
         return path.relative_to(base)
     except ValueError:
         return Path(path.name)
-

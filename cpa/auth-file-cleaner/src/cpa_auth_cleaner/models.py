@@ -1,41 +1,43 @@
 """Data models used by the CPA auth cleaner."""
 
-from __future__ import annotations
-
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
-
-
-@dataclass(frozen=True)
 class InvalidAuthFile:
-    path: Path
-    relative_path: Path
-    provider: Optional[str]
-    email: Optional[str]
-    project_id: Optional[str]
-    error_message: str
-    error_type: str
-    error_code: str
+    def __init__(
+        self,
+        path,
+        relative_path,
+        provider,
+        email,
+        project_id,
+        error_message,
+        error_type,
+        error_code,
+    ):
+        self.path = path
+        self.relative_path = relative_path
+        self.provider = provider
+        self.email = email
+        self.project_id = project_id
+        self.error_message = error_message
+        self.error_type = error_type
+        self.error_code = error_code
 
 
-@dataclass(frozen=True)
 class SkippedFile:
-    path: Path
-    reason: str
+    def __init__(self, path, reason):
+        self.path = path
+        self.reason = reason
 
 
-@dataclass(frozen=True)
 class ScanReport:
-    auth_dir: Path
-    scanned_json_files: int
-    invalid_files: tuple[InvalidAuthFile, ...]
-    skipped_files: tuple[SkippedFile, ...]
+    def __init__(self, auth_dir, scanned_json_files, invalid_files, skipped_files):
+        self.auth_dir = auth_dir
+        self.scanned_json_files = scanned_json_files
+        self.invalid_files = invalid_files
+        self.skipped_files = skipped_files
 
 
-@dataclass(frozen=True)
 class MoveRecord:
-    source: Path
-    destination: Path
-    moved: bool
-
+    def __init__(self, source, destination, moved):
+        self.source = source
+        self.destination = destination
+        self.moved = moved

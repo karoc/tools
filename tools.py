@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Unified command entry for repository tools."""
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 
@@ -33,7 +31,7 @@ def list_tools() -> None:
         print(f"{name}\t{meta['description']}")
 
 
-def run_tool(name: str, args: list[str]) -> int:
+def run_tool(name, args):
     meta = TOOLS[name]
     sys.path.insert(0, str(meta["src"]))
     module_name = str(meta["module"])
@@ -41,7 +39,7 @@ def run_tool(name: str, args: list[str]) -> int:
     return int(module.main(args))
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] in {"-h", "--help"}:
         print_help()

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import subprocess
 import sys
@@ -21,7 +19,7 @@ from cpa_auth_cleaner.mover import move_invalid_files, validate_move_dir  # noqa
 from cpa_auth_cleaner.scanner import scan_auth_dir  # noqa: E402
 
 
-def invalid_payload() -> dict[str, object]:
+def invalid_payload():
     return {
         "type": "codex",
         "email": "invalid@example.com",
@@ -127,8 +125,9 @@ class CPAAuthCleanerTests(unittest.TestCase):
                     "--json",
                 ],
                 check=False,
-                capture_output=True,
-                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -138,11 +137,10 @@ class CPAAuthCleanerTests(unittest.TestCase):
             self.assertTrue((auth_dir / "invalid.json").exists())
 
 
-def write_json(path: Path, payload: dict[str, object]) -> None:
+def write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -1,15 +1,13 @@
 """Format scan and move results for CLI output."""
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
-from typing import Any
+from typing import Tuple
 
 from .models import MoveRecord, ScanReport
 
 
-def render_text_report(report: ScanReport, records: tuple[MoveRecord, ...], dry_run: bool) -> str:
+def render_text_report(report: ScanReport, records: Tuple[MoveRecord, ...], dry_run: bool) -> str:
     lines = [
         f"Auth dir: {report.auth_dir}",
         f"Mode: {'dry-run' if dry_run else 'execute'}",
@@ -48,8 +46,8 @@ def render_text_report(report: ScanReport, records: tuple[MoveRecord, ...], dry_
     return "\n".join(lines)
 
 
-def render_json_report(report: ScanReport, records: tuple[MoveRecord, ...], dry_run: bool) -> str:
-    payload: dict[str, Any] = {
+def render_json_report(report: ScanReport, records: Tuple[MoveRecord, ...], dry_run: bool) -> str:
+    payload = {
         "auth_dir": str(report.auth_dir),
         "mode": "dry-run" if dry_run else "execute",
         "scanned_json_files": report.scanned_json_files,
@@ -86,7 +84,7 @@ def render_json_report(report: ScanReport, records: tuple[MoveRecord, ...], dry_
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
-def compact_detail(**values: str | None) -> str:
+def compact_detail(**values) -> str:
     parts = [f"{key}={value}" for key, value in values.items() if value]
     if not parts:
         return ""
@@ -95,4 +93,3 @@ def compact_detail(**values: str | None) -> str:
 
 def display_path(path: Path) -> str:
     return str(path)
-
