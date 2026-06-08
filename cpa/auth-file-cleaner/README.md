@@ -47,23 +47,23 @@ cd cpa/auth-file-cleaner
 
 优先使用管理 API 扫描，因为管理中心标记是 CPA 运行时状态，不一定写入认证 JSON 文件。
 
+管理模式默认使用 CPA 项目常用地址 `http://127.0.0.1:8317`，管理密钥默认从 `CPA_SECRET_KEY` 环境变量读取。如果 CPA 运行在 Docker 映射端口或反向代理后面，请显式传入 `--management-url`。
+
 只扫描授权失效标记：
 
 ```bash
-CPA_MANAGEMENT_KEY='your-management-key' \
+CPA_SECRET_KEY='your-management-key' \
 python3 clean_cpa_auths.py \
   --source management \
-  --management-url http://127.0.0.1:8317 \
   --auth-dir ~/.cli-proxy-api
 ```
 
 复现管理中心“仅显示有问题凭证”筛选：
 
 ```bash
-CPA_MANAGEMENT_KEY='your-management-key' \
+CPA_SECRET_KEY='your-management-key' \
 python3 clean_cpa_auths.py \
   --source management \
-  --management-url http://127.0.0.1:8317 \
   --match problem \
   --auth-dir ~/.cli-proxy-api
 ```
@@ -128,8 +128,6 @@ sudo sh -c 'printf "%s\n" "CPA_SECRET_KEY=your-management-key" > /etc/cpa-auth-f
 ```bash
 python3 tools.py cpa-auth-file-cleaner \
   --source management \
-  --management-url http://127.0.0.1:8317 \
-  --management-key-env CPA_SECRET_KEY \
   --match invalidated \
   --auth-dir /srv/CLIProxyAPI/auths \
   --execute \
@@ -141,8 +139,6 @@ python3 tools.py cpa-auth-file-cleaner \
 ```bash
 sudo python3 tools.py cpa-auth-file-cleaner \
   --source management \
-  --management-url http://127.0.0.1:8317 \
-  --management-key-env CPA_SECRET_KEY \
   --match invalidated \
   --auth-dir /srv/CLIProxyAPI/auths \
   --execute \
@@ -155,8 +151,6 @@ sudo python3 tools.py cpa-auth-file-cleaner \
 ```bash
 sudo python3 tools.py cpa-auth-file-cleaner \
   --source management \
-  --management-url http://127.0.0.1:8317 \
-  --management-key-env CPA_SECRET_KEY \
   --match invalidated \
   --auth-dir /srv/CLIProxyAPI/auths \
   --execute \
@@ -184,6 +178,12 @@ sudo python3 tools.py cpa-auth-file-cleaner --uninstall-service
 
 注册时传入的扫描参数会固化到 `ExecStart`。如果希望定时任务真的移动文件，注册命令必须包含 `--execute`；不带 `--execute` 时，定时任务只会定期 dry-run 并输出报告。
 
+当前服务器若使用类似 `41363:8317` 的 Docker 端口映射，应覆盖默认地址：
+
+```bash
+--management-url http://127.0.0.1:41363
+```
+
 ## 统一入口使用
 
 在仓库根目录运行：
@@ -196,10 +196,9 @@ python3 tools.py cpa-auth-file-cleaner --auth-dir ~/.cli-proxy-api --execute
 管理 API 模式：
 
 ```bash
-CPA_MANAGEMENT_KEY='your-management-key' \
+CPA_SECRET_KEY='your-management-key' \
 python3 tools.py cpa-auth-file-cleaner \
   --source management \
-  --management-url http://127.0.0.1:8317 \
   --match problem \
   --auth-dir ~/.cli-proxy-api
 ```
@@ -208,7 +207,7 @@ python3 tools.py cpa-auth-file-cleaner \
 
 - 默认 dry-run，只报告命中文件，不移动。
 - 只有显式传入 `--execute` 才会移动文件。
-- 管理 API 密钥建议通过 `CPA_MANAGEMENT_KEY` 环境变量传入，避免出现在 shell history 中。
+- 管理 API 密钥建议通过 `CPA_SECRET_KEY` 环境变量传入，避免出现在 shell history 中；旧的 `CPA_MANAGEMENT_KEY` 仍兼容。
 - 移动目录不允许位于 `auth-dir` 内部，避免 CPA 继续读取被移走的 `.json` 文件。
 - 移动时保留相对路径；目标文件已存在时自动追加序号，避免覆盖。
 - 无法解析的 JSON 文件会被计入 skipped，不会被移动。

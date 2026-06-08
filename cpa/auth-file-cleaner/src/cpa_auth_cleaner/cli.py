@@ -25,6 +25,8 @@ from .service import (
 
 
 DEFAULT_AUTH_DIR = "~/.cli-proxy-api"
+DEFAULT_MANAGEMENT_URL = "http://127.0.0.1:8317"
+DEFAULT_MANAGEMENT_KEY_ENV = "CPA_SECRET_KEY"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,8 +52,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--management-url",
-        default="",
-        help="CPA base URL for management scanning, for example http://127.0.0.1:8317.",
+        default=DEFAULT_MANAGEMENT_URL,
+        help=f"CPA base URL for management scanning. Default: {DEFAULT_MANAGEMENT_URL}",
     )
     parser.add_argument(
         "--management-key",
@@ -63,8 +65,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--management-key-env",
-        default="CPA_MANAGEMENT_KEY",
-        help="Environment variable containing the management key. Default: CPA_MANAGEMENT_KEY.",
+        default=DEFAULT_MANAGEMENT_KEY_ENV,
+        help=(
+            "Environment variable containing the management key. "
+            f"Default: {DEFAULT_MANAGEMENT_KEY_ENV}."
+        ),
     )
     parser.add_argument(
         "--match",
@@ -232,7 +237,7 @@ def prepare_management_key(args):
     if args.source != "management":
         return ""
     if not args.management_url.strip():
-        raise ValueError("--management-url is required when --source=management")
+        raise ValueError("--management-url must not be empty when --source=management")
     return management_key_from_args(args.management_key, args.management_key_env)
 
 

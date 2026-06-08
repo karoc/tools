@@ -42,7 +42,11 @@ def management_key_from_args(value, env_name):
     if value:
         return value
     if env_name:
-        return os.environ.get(env_name, "")
+        direct_value = os.environ.get(env_name, "")
+        if direct_value:
+            return direct_value
+        if env_name == "CPA_SECRET_KEY":
+            return os.environ.get("CPA_MANAGEMENT_KEY", "")
     return ""
 
 

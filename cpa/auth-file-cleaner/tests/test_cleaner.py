@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,7 @@ from cpa_auth_cleaner.constants import (  # noqa: E402
     INVALIDATED_ERROR_TYPE,
 )
 from cpa_auth_cleaner.management import scan_management_payload  # noqa: E402
+from cpa_auth_cleaner.management import management_key_from_args  # noqa: E402
 from cpa_auth_cleaner.mover import move_invalid_files, validate_move_dir  # noqa: E402
 from cpa_auth_cleaner.scanner import scan_auth_dir  # noqa: E402
 
@@ -254,6 +256,31 @@ class CPAAuthCleanerTests(unittest.TestCase):
         self.assertIn("--management-key-env", payload["run_args"])
         self.assertIn("CPA_SECRET_KEY", payload["run_args"])
 
+    def test_management_service_uses_cpa_defaults(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "tools.py"),
+                "cpa-auth-file-cleaner",
+                "--source",
+                "management",
+                "--auth-dir",
+                "~/.cli-proxy-api",
+                "--print-service-units",
+                "--json",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["interval"], "1min")
+        self.assertIn("http://127.0.0.1:8317", payload["run_args"])
+        self.assertIn("CPA_SECRET_KEY", payload["run_args"])
+
     def test_service_registration_rejects_plain_management_key(self) -> None:
         result = subprocess.run(
             [
@@ -276,6 +303,28 @@ class CPAAuthCleanerTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("do not store --management-key in a service", result.stderr)
+
+    def test_management_key_env_defaults_to_cpa_secret_key_with_legacy_fallback(self) -> None:
+        old_secret = os.environ.pop("CPA_SECRET_KEY", None)
+        old_legacy = os.environ.pop("CPA_MANAGEMENT_KEY", None)
+        try:
+            os.environ["CPA_MANAGEMENT_KEY"] = "legacy-value"
+            self.assertEqual(
+                management_key_from_args("", "CPA_SECRET_KEY"),
+                "legacy-value",
+            )
+            os.environ["CPA_SECRET_KEY"] = "secret-value"
+            self.assertEqual(
+                management_key_from_args("", "CPA_SECRET_KEY"),
+                "secret-value",
+            )
+        finally:
+            os.environ.pop("CPA_SECRET_KEY", None)
+            os.environ.pop("CPA_MANAGEMENT_KEY", None)
+            if old_secret is not None:
+                os.environ["CPA_SECRET_KEY"] = old_secret
+            if old_legacy is not None:
+                os.environ["CPA_MANAGEMENT_KEY"] = old_legacy
 
     def test_management_problem_mode_matches_any_status_message(self) -> None:
         payload = {
