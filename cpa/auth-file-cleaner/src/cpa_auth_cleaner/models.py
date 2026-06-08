@@ -29,11 +29,12 @@ class SkippedFile:
 
 
 class ScanReport:
-    def __init__(self, auth_dir, scanned_json_files, invalid_files, skipped_files):
+    def __init__(self, auth_dir, scanned_json_files, invalid_files, skipped_files, source="file-marker"):
         self.auth_dir = auth_dir
         self.scanned_json_files = scanned_json_files
         self.invalid_files = invalid_files
         self.skipped_files = skipped_files
+        self.source = source
 
 
 class MoveRecord:

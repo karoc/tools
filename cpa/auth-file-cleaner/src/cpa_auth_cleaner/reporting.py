@@ -9,6 +9,7 @@ from .models import MoveRecord, ScanReport
 
 def render_text_report(report: ScanReport, records: Tuple[MoveRecord, ...], dry_run: bool) -> str:
     lines = [
+        f"Source: {getattr(report, 'source', 'file-marker')}",
         f"Auth dir: {report.auth_dir}",
         f"Mode: {'dry-run' if dry_run else 'execute'}",
         f"Scanned JSON files: {report.scanned_json_files}",
@@ -48,6 +49,7 @@ def render_text_report(report: ScanReport, records: Tuple[MoveRecord, ...], dry_
 
 def render_json_report(report: ScanReport, records: Tuple[MoveRecord, ...], dry_run: bool) -> str:
     payload = {
+        "source": getattr(report, "source", "file-marker"),
         "auth_dir": str(report.auth_dir),
         "mode": "dry-run" if dry_run else "execute",
         "scanned_json_files": report.scanned_json_files,

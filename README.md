@@ -16,6 +16,17 @@ python3 tools.py list
 python3 tools.py cpa-auth-file-cleaner --auth-dir ~/.cli-proxy-api
 ```
 
+扫描 CPA 管理中心运行时状态：
+
+```bash
+CPA_MANAGEMENT_KEY='your-management-key' \
+python3 tools.py cpa-auth-file-cleaner \
+  --source management \
+  --management-url http://127.0.0.1:8317 \
+  --match problem \
+  --auth-dir ~/.cli-proxy-api
+```
+
 默认只扫描和报告，不移动文件。确认结果后执行移动：
 
 ```bash

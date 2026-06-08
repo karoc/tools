@@ -15,6 +15,7 @@ from cpa_auth_cleaner.constants import (  # noqa: E402
     INVALIDATED_ERROR_MESSAGE,
     INVALIDATED_ERROR_TYPE,
 )
+from cpa_auth_cleaner.management import scan_management_payload  # noqa: E402
 from cpa_auth_cleaner.mover import move_invalid_files, validate_move_dir  # noqa: E402
 from cpa_auth_cleaner.scanner import scan_auth_dir  # noqa: E402
 
@@ -135,6 +136,49 @@ class CPAAuthCleanerTests(unittest.TestCase):
             self.assertEqual(payload["mode"], "dry-run")
             self.assertEqual(payload["invalidated_count"], 1)
             self.assertTrue((auth_dir / "invalid.json").exists())
+
+    def test_management_problem_mode_matches_any_status_message(self) -> None:
+        payload = {
+            "files": [
+                {"name": "ok.json", "status_message": ""},
+                {"name": "healthy.json", "status_message": "healthy"},
+                {"name": "bad.json", "status_message": "unauthorized", "type": "codex"},
+                {"name": "virtual.json", "status_message": "unauthorized", "runtime_only": True},
+            ]
+        }
+
+        report = scan_management_payload(payload, match_mode="problem", auth_dir="/auths")
+
+        self.assertEqual(report.source, "management")
+        self.assertEqual(report.scanned_json_files, 4)
+        self.assertEqual([item.relative_path for item in report.invalid_files], [Path("healthy.json"), Path("bad.json")])
+
+    def test_management_warning_mode_ignores_healthy_status_messages(self) -> None:
+        payload = {
+            "files": [
+                {"name": "healthy.json", "status_message": "healthy"},
+                {"name": "ready.json", "statusMessage": "ready"},
+                {"name": "bad.json", "status_message": "unauthorized"},
+            ]
+        }
+
+        report = scan_management_payload(payload, match_mode="warning", auth_dir="/auths")
+
+        self.assertEqual([item.relative_path for item in report.invalid_files], [Path("bad.json")])
+
+    def test_management_invalidated_mode_matches_invalidated_message(self) -> None:
+        payload = {
+            "files": [
+                {"name": "quota.json", "status_message": "quota exhausted"},
+                {"name": "invalid.json", "status_message": INVALIDATED_ERROR_MESSAGE, "path": "/auths/invalid.json"},
+            ]
+        }
+
+        report = scan_management_payload(payload, match_mode="invalidated", auth_dir="/auths")
+
+        self.assertEqual(len(report.invalid_files), 1)
+        self.assertEqual(report.invalid_files[0].path, Path("/auths/invalid.json"))
+        self.assertEqual(report.invalid_files[0].error_code, INVALIDATED_ERROR_CODE)
 
 
 def write_json(path: Path, payload) -> None:
