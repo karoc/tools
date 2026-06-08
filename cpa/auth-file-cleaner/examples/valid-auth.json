@@ -1,0 +1,7 @@
+{
+  "type": "codex",
+  "email": "valid@example.com",
+  "access_token": "example-access-token",
+  "refresh_token": "example-refresh-token"
+}
+

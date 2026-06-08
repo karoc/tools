@@ -1,0 +1,10 @@
+{
+  "type": "codex",
+  "email": "invalid@example.com",
+  "error": {
+    "message": "Your authentication token has been invalidated. Please try signing in again.",
+    "type": "authentication_error",
+    "code": "auth_unavailable"
+  }
+}
+
