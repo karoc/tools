@@ -16,8 +16,10 @@ from cpa_auth_cleaner.constants import (  # noqa: E402
     INVALIDATED_ERROR_MESSAGE,
     INVALIDATED_ERROR_TYPE,
 )
+from cpa_auth_cleaner.execution import execution_verification  # noqa: E402
 from cpa_auth_cleaner.management import scan_management_payload  # noqa: E402
 from cpa_auth_cleaner.management import management_key_from_args  # noqa: E402
+from cpa_auth_cleaner.models import InvalidAuthFile, MoveRecord, ScanReport  # noqa: E402
 from cpa_auth_cleaner.mover import move_invalid_files, validate_move_dir  # noqa: E402
 from cpa_auth_cleaner.scanner import scan_auth_dir  # noqa: E402
 
@@ -177,14 +179,119 @@ class CPAAuthCleanerTests(unittest.TestCase):
             self.assertEqual(payload["move_summary"]["moved_count"], 1)
             self.assertEqual(payload["move_summary"]["not_moved_count"], 0)
             self.assertEqual(payload["post_scan"]["invalidated_count"], 0)
+            self.assertEqual(payload["post_scan_file_state"]["active_file_count"], 0)
             self.assertEqual(payload["quarantine_summary"]["directory"], str(move_dir))
             self.assertEqual(payload["quarantine_summary"]["file_count"], 1)
             self.assertEqual(payload["quarantine_summary"]["json_file_count"], 1)
             self.assertEqual(payload["quarantine_summary"]["confirmed_destination_count"], 1)
             self.assertTrue(payload["verification"]["ok"])
+            self.assertEqual(payload["verification"]["status"], "ok")
             self.assertFalse((auth_dir / "invalid.json").exists())
             self.assertTrue((move_dir / "invalid.json").exists())
             self.assertTrue((auth_dir / "valid.json").exists())
+
+    def test_verification_treats_missing_post_scan_files_as_stale_management_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            auth_dir = Path(temp) / "auths"
+            move_dir = Path(temp) / "quarantine"
+            auth_dir.mkdir()
+            move_dir.mkdir()
+            moved_file = move_dir / "stale.json"
+            moved_file.write_text("{}", encoding="utf-8")
+            missing_active_file = auth_dir / "stale.json"
+
+            records = (
+                MoveRecord(
+                    source=missing_active_file,
+                    destination=moved_file,
+                    moved=True,
+                ),
+            )
+            post_report = ScanReport(
+                auth_dir=auth_dir,
+                scanned_json_files=1,
+                invalid_files=(
+                    InvalidAuthFile(
+                        path=missing_active_file,
+                        relative_path=Path("stale.json"),
+                        provider="codex",
+                        email=None,
+                        project_id=None,
+                        error_message=INVALIDATED_ERROR_MESSAGE,
+                        error_type=INVALIDATED_ERROR_TYPE,
+                        error_code=INVALIDATED_ERROR_CODE,
+                    ),
+                ),
+                skipped_files=(),
+                source="management",
+            )
+            quarantine = {
+                "confirmed_destination_count": 1,
+                "missing_destinations": [],
+            }
+
+            verification = execution_verification(records, post_report, quarantine)
+
+            self.assertTrue(verification["ok"])
+            self.assertEqual(verification["status"], "stale_management_state")
+            self.assertEqual(
+                verification["post_scan_file_state"]["active_file_count"],
+                0,
+            )
+            self.assertEqual(
+                verification["post_scan_file_state"]["management_only_count"],
+                1,
+            )
+
+    def test_verification_fails_when_post_scan_active_file_still_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            auth_dir = Path(temp) / "auths"
+            move_dir = Path(temp) / "quarantine"
+            auth_dir.mkdir()
+            move_dir.mkdir()
+            active_file = auth_dir / "still-active.json"
+            moved_file = move_dir / "still-active.json"
+            active_file.write_text("{}", encoding="utf-8")
+            moved_file.write_text("{}", encoding="utf-8")
+
+            records = (
+                MoveRecord(
+                    source=active_file,
+                    destination=moved_file,
+                    moved=True,
+                ),
+            )
+            post_report = ScanReport(
+                auth_dir=auth_dir,
+                scanned_json_files=1,
+                invalid_files=(
+                    InvalidAuthFile(
+                        path=active_file,
+                        relative_path=Path("still-active.json"),
+                        provider="codex",
+                        email=None,
+                        project_id=None,
+                        error_message=INVALIDATED_ERROR_MESSAGE,
+                        error_type=INVALIDATED_ERROR_TYPE,
+                        error_code=INVALIDATED_ERROR_CODE,
+                    ),
+                ),
+                skipped_files=(),
+                source="management",
+            )
+            quarantine = {
+                "confirmed_destination_count": 1,
+                "missing_destinations": [],
+            }
+
+            verification = execution_verification(records, post_report, quarantine)
+
+            self.assertFalse(verification["ok"])
+            self.assertEqual(verification["status"], "failed")
+            self.assertEqual(
+                verification["post_scan_file_state"]["active_file_count"],
+                1,
+            )
 
     def test_service_units_default_to_one_minute(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

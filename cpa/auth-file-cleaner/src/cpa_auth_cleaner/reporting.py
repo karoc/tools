@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Tuple
 
-from .execution import dry_run_verification, move_summary, scan_summary
+from .execution import dry_run_verification, move_summary, post_scan_file_state, scan_summary
 from .models import MoveRecord, ScanReport
 
 
@@ -64,6 +64,11 @@ def render_text_report(
         lines.append("Post-move verification:")
         if post_report is not None:
             lines.append(f"  Post-scan invalidated auth files: {len(post_report.invalid_files)}")
+            file_state = post_scan_file_state(post_report)
+            lines.append(f"  Post-scan active files still present: {file_state['active_file_count']}")
+            lines.append(
+                f"  Post-scan management-only stale entries: {file_state['management_only_count']}"
+            )
         if post_scan_error:
             lines.append(f"  Post-scan error: {post_scan_error}")
         if quarantine:
@@ -74,7 +79,7 @@ def render_text_report(
                 f"  Confirmed moved destinations: {quarantine['confirmed_destination_count']}"
             )
         if verification:
-            lines.append(f"  Verification: {'ok' if verification['ok'] else 'failed'}")
+            lines.append(f"  Verification: {verification.get('status', 'failed')}")
 
     if report.skipped_files:
         lines.append("")
@@ -107,6 +112,7 @@ def render_json_report(
         "pre_scan": pre_summary,
         "move_summary": move_summary(records),
         "post_scan": scan_summary(post_report) if post_report is not None else None,
+        "post_scan_file_state": post_scan_file_state(post_report),
         "post_scan_error": post_scan_error or None,
         "quarantine_summary": quarantine,
         "verification": verification if verification is not None else dry_run_verification(),

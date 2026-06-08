@@ -18,6 +18,26 @@ def scan_summary(report):
     }
 
 
+def post_scan_file_state(report):
+    if report is None:
+        return None
+
+    existing = []
+    missing = []
+    for item in report.invalid_files:
+        path = Path(item.path)
+        target = existing if path.exists() else missing
+        target.append(str(path))
+
+    return {
+        "invalidated_count": len(report.invalid_files),
+        "active_file_count": len(existing),
+        "management_only_count": len(missing),
+        "active_files": existing,
+        "management_only_files": missing,
+    }
+
+
 def move_summary(records):
     moved_count = sum(1 for record in records if record.moved)
     planned_count = len(records)
@@ -47,6 +67,7 @@ def quarantine_summary(move_dir, records):
 
 def execution_verification(records, post_report, quarantine, post_scan_error=""):
     moves = move_summary(records)
+    file_state = post_scan_file_state(post_report)
     confirmed_count = 0
     missing_destinations = []
     if quarantine:
@@ -84,31 +105,46 @@ def execution_verification(records, post_report, quarantine, post_scan_error="")
                 ok=post_report is not None,
                 expected="success",
                 actual="success" if post_report is not None else "not_run",
-            )
-        )
-
-    remaining_count = len(post_report.invalid_files) if post_report is not None else None
-    checks.append(
-        verification_check(
-            name="post_scan_has_no_matches",
-            ok=remaining_count == 0,
-            expected=0,
-            actual=remaining_count,
         )
     )
 
+    remaining_count = len(post_report.invalid_files) if post_report is not None else None
+    active_remaining = file_state.get("active_file_count") if file_state else None
+    checks.append(
+        verification_check(
+            name="post_scan_has_no_active_files",
+            ok=active_remaining == 0,
+            expected=0,
+            actual=active_remaining,
+        )
+    )
+
+    ok = all(check["ok"] for check in checks)
     return {
-        "ok": all(check["ok"] for check in checks),
+        "ok": ok,
+        "status": verification_status(ok, post_scan_error, remaining_count, active_remaining),
         "checks": checks,
+        "post_scan_file_state": file_state,
     }
 
 
 def dry_run_verification():
     return {
         "ok": None,
+        "status": "dry_run",
         "reason": "dry_run_not_executed",
         "checks": [],
     }
+
+
+def verification_status(ok, post_scan_error, remaining_count, active_remaining):
+    if ok and remaining_count == 0:
+        return "ok"
+    if ok and remaining_count and active_remaining == 0:
+        return "stale_management_state"
+    if post_scan_error:
+        return "post_scan_failed"
+    return "failed"
 
 
 def verification_check(name, ok, expected, actual):
