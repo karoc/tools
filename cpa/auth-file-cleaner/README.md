@@ -102,10 +102,10 @@ python3 clean_cpa_auths.py --auth-dir ~/.cli-proxy-api
 python3 clean_cpa_auths.py --auth-dir ~/.cli-proxy-api --execute
 ```
 
-默认移动到认证目录旁边的时间戳目录，例如：
+默认移动到认证目录旁边的日期/时间目录，例如：
 
 ```text
-~/.cli-proxy-api-invalidated/20260609-113000/
+~/.cli-proxy-api-invalidated/20260609/113000/
 ```
 
 指定移动目录：
@@ -243,7 +243,7 @@ find "$tmp-invalidated" -type f -name '*.json' -print
 期望结果：
 
 - dry-run 输出命中 `invalid-auth.json`，且文件仍留在原目录。
-- execute 后 `invalid-auth.json` 被移动到 `$tmp-invalidated/<timestamp>/`。
+- execute 后 `invalid-auth.json` 被移动到 `$tmp-invalidated/<YYYYMMDD>/<HHMMSS>/`。
 - `valid-auth.json` 仍留在原认证目录。
 
 ## 测试

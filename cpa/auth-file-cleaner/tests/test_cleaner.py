@@ -20,7 +20,11 @@ from cpa_auth_cleaner.execution import execution_verification  # noqa: E402
 from cpa_auth_cleaner.management import scan_management_payload  # noqa: E402
 from cpa_auth_cleaner.management import management_key_from_args  # noqa: E402
 from cpa_auth_cleaner.models import InvalidAuthFile, MoveRecord, ScanReport  # noqa: E402
-from cpa_auth_cleaner.mover import move_invalid_files, validate_move_dir  # noqa: E402
+from cpa_auth_cleaner.mover import (  # noqa: E402
+    default_move_dir,
+    move_invalid_files,
+    validate_move_dir,
+)
 from cpa_auth_cleaner.scanner import scan_auth_dir  # noqa: E402
 
 
@@ -113,6 +117,18 @@ class CPAAuthCleanerTests(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 validate_move_dir(auth_dir, auth_dir / "invalidated")
+
+    def test_default_move_dir_uses_date_time_nested_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            auth_dir = Path(temp) / "auths"
+
+            move_dir = default_move_dir(auth_dir)
+            relative = move_dir.relative_to(Path(temp))
+
+            self.assertEqual(relative.parts[0], "auths-invalidated")
+            self.assertEqual(len(relative.parts), 3)
+            self.assertRegex(relative.parts[1], r"^\d{8}$")
+            self.assertRegex(relative.parts[2], r"^\d{6}$")
 
     def test_unified_entry_dry_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

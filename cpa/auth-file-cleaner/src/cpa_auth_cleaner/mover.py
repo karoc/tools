@@ -10,8 +10,13 @@ from .models import InvalidAuthFile, MoveRecord
 
 
 def default_move_dir(auth_dir: Path) -> Path:
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return auth_dir.parent / f"{auth_dir.name}-invalidated" / timestamp
+    now = datetime.now()
+    return (
+        auth_dir.parent
+        / f"{auth_dir.name}-invalidated"
+        / now.strftime("%Y%m%d")
+        / now.strftime("%H%M%S")
+    )
 
 
 def validate_move_dir(auth_dir: Path, move_dir: Path) -> None:

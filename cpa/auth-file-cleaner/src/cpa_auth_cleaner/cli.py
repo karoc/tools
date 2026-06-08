@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--move-dir",
         default="",
-        help="Destination directory for matched files. Defaults to a sibling timestamp directory.",
+        help="Destination directory for matched files. Defaults to a sibling date/time directory.",
     )
     parser.add_argument(
         "--management-url",
