@@ -53,7 +53,7 @@ def scan_management_payload(payload, match_mode="invalidated", auth_dir=None):
 
     invalid_files = []
     skipped_files = []
-    base = Path(auth_dir).expanduser() if auth_dir else Path("")
+    base = Path(auth_dir).expanduser() if auth_dir else None
 
     for item in files:
         if not isinstance(item, dict):
@@ -65,7 +65,7 @@ def scan_management_payload(payload, match_mode="invalidated", auth_dir=None):
             invalid_files.append(build_management_candidate(base, item, match_mode))
 
     return ScanReport(
-        auth_dir=base,
+        auth_dir=base or Path(""),
         scanned_json_files=len(files),
         invalid_files=tuple(invalid_files),
         skipped_files=tuple(skipped_files),
@@ -152,7 +152,8 @@ def error_detail_from_mapping(mapping):
 def build_management_candidate(base, item, match_mode):
     name = string_value(item, "name") or string_value(item, "id") or "<unknown>"
     path_text = string_value(item, "path")
-    path = Path(path_text) if path_text else base / name
+    relative_path = management_relative_path(name, path_text)
+    path = base / relative_path if base is not None else management_fallback_path(path_text, relative_path)
     status = string_value(item, "status")
     message = status_message(item)
     detail = status_error_detail(item, message)
@@ -160,7 +161,7 @@ def build_management_candidate(base, item, match_mode):
 
     return InvalidAuthFile(
         path=path,
-        relative_path=Path(name),
+        relative_path=relative_path,
         provider=string_value(item, "type") or string_value(item, "provider") or None,
         email=string_value(item, "email") or None,
         project_id=string_value(item, "project_id") or None,
@@ -168,6 +169,23 @@ def build_management_candidate(base, item, match_mode):
         error_type=detail.get("type") or "management_status",
         error_code=detail.get("code") or reason,
     )
+
+
+def management_relative_path(name, path_text):
+    if name and not Path(name).is_absolute():
+        return Path(name)
+    if path_text:
+        path = Path(path_text)
+        if not path.is_absolute():
+            return path
+        return Path(path.name)
+    return Path(name or "<unknown>")
+
+
+def management_fallback_path(path_text, relative_path):
+    if path_text:
+        return Path(path_text)
+    return relative_path
 
 
 def management_reason(item, match_mode):

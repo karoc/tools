@@ -180,6 +180,29 @@ class CPAAuthCleanerTests(unittest.TestCase):
         self.assertEqual(report.invalid_files[0].path, Path("/auths/invalid.json"))
         self.assertEqual(report.invalid_files[0].error_code, INVALIDATED_ERROR_CODE)
 
+    def test_management_uses_host_auth_dir_instead_of_container_path(self) -> None:
+        payload = {
+            "files": [
+                {
+                    "name": "container-path.json",
+                    "path": "/root/.cli-proxy-api/container-path.json",
+                    "status_message": INVALIDATED_ERROR_MESSAGE,
+                }
+            ]
+        }
+
+        report = scan_management_payload(
+            payload,
+            match_mode="invalidated",
+            auth_dir="/srv/CLIProxyAPI/auths",
+        )
+
+        self.assertEqual(
+            report.invalid_files[0].path,
+            Path("/srv/CLIProxyAPI/auths/container-path.json"),
+        )
+        self.assertEqual(report.invalid_files[0].relative_path, Path("container-path.json"))
+
     def test_management_invalidated_mode_parses_status_message_json(self) -> None:
         exact_invalidated = status_error_json(INVALIDATED_ERROR_MESSAGE)
         alternate_invalidated = status_error_json(
