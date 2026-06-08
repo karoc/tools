@@ -184,6 +184,99 @@ class CPAAuthCleanerTests(unittest.TestCase):
             self.assertTrue((move_dir / "invalid.json").exists())
             self.assertTrue((auth_dir / "valid.json").exists())
 
+    def test_service_units_default_to_one_minute(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            auth_dir = Path(temp) / "auths"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "tools.py"),
+                    "cpa-auth-file-cleaner",
+                    "--auth-dir",
+                    str(auth_dir),
+                    "--print-service-units",
+                    "--json",
+                ],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["action"], "print")
+            self.assertEqual(payload["interval"], "1min")
+            self.assertIn("OnBootSec=1min", payload["timer_unit"])
+            self.assertIn("OnUnitActiveSec=1min", payload["timer_unit"])
+            self.assertIn("cpa-auth-file-cleaner", payload["service_unit"])
+            self.assertIn("--json", payload["run_args"])
+
+    def test_service_units_accept_custom_management_schedule(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "tools.py"),
+                "cpa-auth-file-cleaner",
+                "--source",
+                "management",
+                "--management-url",
+                "http://127.0.0.1:8317",
+                "--management-key-env",
+                "CPA_SECRET_KEY",
+                "--match",
+                "invalidated",
+                "--auth-dir",
+                "/srv/CLIProxyAPI/auths",
+                "--execute",
+                "--print-service-units",
+                "--service-interval",
+                "5min",
+                "--service-env-file",
+                "/etc/cpa-auth-file-cleaner.env",
+                "--service-user",
+                "admin",
+                "--json",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["interval"], "5min")
+        self.assertIn("OnUnitActiveSec=5min", payload["timer_unit"])
+        self.assertIn("EnvironmentFile=-/etc/cpa-auth-file-cleaner.env", payload["service_unit"])
+        self.assertIn("User=admin", payload["service_unit"])
+        self.assertIn("--execute", payload["run_args"])
+        self.assertIn("--management-key-env", payload["run_args"])
+        self.assertIn("CPA_SECRET_KEY", payload["run_args"])
+
+    def test_service_registration_rejects_plain_management_key(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "tools.py"),
+                "cpa-auth-file-cleaner",
+                "--source",
+                "management",
+                "--management-url",
+                "http://127.0.0.1:8317",
+                "--management-key",
+                "secret-value",
+                "--print-service-units",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("do not store --management-key in a service", result.stderr)
+
     def test_management_problem_mode_matches_any_status_message(self) -> None:
         payload = {
             "files": [

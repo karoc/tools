@@ -112,6 +112,78 @@ python3 clean_cpa_auths.py --auth-dir ~/.cli-proxy-api --json
 python3 clean_cpa_auths.py --auth-dir ~/.cli-proxy-api --no-recursive
 ```
 
+## 注册为 systemd 定时服务
+
+工具支持生成并注册 systemd `service + timer`。timer 默认每 1 分钟执行一次，可以通过 `--service-interval` 自定义。以下命令在仓库根目录执行。
+
+先准备管理密钥环境文件，不要把密钥写入命令行：
+
+```bash
+sudo install -m 600 /dev/null /etc/cpa-auth-file-cleaner.env
+sudo sh -c 'printf "%s\n" "CPA_SECRET_KEY=your-management-key" > /etc/cpa-auth-file-cleaner.env'
+```
+
+先预览将要注册的 unit，不写入系统：
+
+```bash
+python3 tools.py cpa-auth-file-cleaner \
+  --source management \
+  --management-url http://127.0.0.1:8317 \
+  --management-key-env CPA_SECRET_KEY \
+  --match invalidated \
+  --auth-dir /srv/CLIProxyAPI/auths \
+  --execute \
+  --print-service-units
+```
+
+注册系统级定时服务，默认每 1 分钟执行一次：
+
+```bash
+sudo python3 tools.py cpa-auth-file-cleaner \
+  --source management \
+  --management-url http://127.0.0.1:8317 \
+  --management-key-env CPA_SECRET_KEY \
+  --match invalidated \
+  --auth-dir /srv/CLIProxyAPI/auths \
+  --execute \
+  --install-service \
+  --service-user admin
+```
+
+自定义执行间隔，例如每 5 分钟执行一次：
+
+```bash
+sudo python3 tools.py cpa-auth-file-cleaner \
+  --source management \
+  --management-url http://127.0.0.1:8317 \
+  --management-key-env CPA_SECRET_KEY \
+  --match invalidated \
+  --auth-dir /srv/CLIProxyAPI/auths \
+  --execute \
+  --install-service \
+  --service-user admin \
+  --service-interval 5min
+```
+
+卸载定时服务：
+
+```bash
+sudo python3 tools.py cpa-auth-file-cleaner --uninstall-service
+```
+
+常用参数：
+
+- `--install-service`：写入 unit 文件，执行 `systemctl daemon-reload`，并 `enable --now` timer。
+- `--uninstall-service`：停止并禁用 timer，删除对应 service/timer unit。
+- `--print-service-units`：只打印 unit 内容，不写文件、不调用 systemctl。
+- `--service-interval`：systemd 时间表达式，默认 `1min`。
+- `--service-name`：服务基名，默认 `cpa-auth-file-cleaner`。
+- `--service-env-file`：服务读取的环境文件，默认 `/etc/cpa-auth-file-cleaner.env`。
+- `--service-user`：系统级服务运行用户；生产环境建议设置为有权限访问认证目录的用户。
+- `--user-service`：注册为 systemd user timer，unit 默认写入 `~/.config/systemd/user/`。
+
+注册时传入的扫描参数会固化到 `ExecStart`。如果希望定时任务真的移动文件，注册命令必须包含 `--execute`；不带 `--execute` 时，定时任务只会定期 dry-run 并输出报告。
+
 ## 统一入口使用
 
 在仓库根目录运行：
