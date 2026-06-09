@@ -1,10 +1,21 @@
 # CPA 授权文件处理
 
-该工具用于清理 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 中已经授权失效的认证文件。它优先读取 CPA 管理接口维护的运行时状态，扫出失效认证文件，并把这些文件从活动认证目录移动到隔离目录。
+该工具用于清理 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 中已经授权失效的认证文件。CPA 管理中心会维护每个认证文件的运行时状态，本工具读取这些状态，找出授权失效的认证文件，并把它们从活动认证目录移动到隔离目录。
 
 默认行为是 dry-run：只扫描、只展示计划，不移动文件。只有显式传入 `--execute` 才会移动文件。
 
-## 先看这三件事
+## 适合解决什么问题
+
+使用这个工具处理下面这类情况：
+
+- CPA 管理中心已经把某些认证文件标记为授权失效。
+- 失效信息不一定写入认证 JSON 文件，而是 CPA 运行时状态。
+- 希望把这些失效认证文件从活动认证目录挪走，避免继续被 CPA 读取。
+- 希望定时执行，自动隔离后续出现的失效认证文件。
+
+不要把这个工具当作通用认证文件删除器。它默认只处理授权失效状态，不处理额度耗尽、网络失败、模型不可用等其他问题。
+
+## 第一次使用先确认
 
 使用管理中心状态扫描前，先确认三个值：
 
@@ -14,39 +25,35 @@
 | `--auth-dir` | `~/.cli-proxy-api` | CPA 容器挂载到宿主机目录时，必须填宿主机上的认证目录 |
 | `CPA_SECRET_KEY` | 无 | 必须提供，来自 CPA 配置 `remote-management.secret-key` |
 
-如果你是直接在宿主机上运行 CPA，默认 URL 通常可用：
+怎么判断 `--management-url`：
 
-```bash
---management-url http://127.0.0.1:8317
-```
+- 直接在宿主机上运行 CPA，通常使用默认值 `http://127.0.0.1:8317`。
+- Docker 映射为 `41363:8317`，宿主机访问必须用 `http://127.0.0.1:41363`。
+- 反向代理或部署到其他机器时，使用能从当前执行机器访问到 CPA 管理接口的地址。
 
-如果 CPA 通过 Docker 暴露端口，例如：
+怎么判断 `--auth-dir`：
 
-```yaml
-ports:
-  - "41363:8317"
-```
-
-工具必须使用宿主机端口：
-
-```bash
---management-url http://127.0.0.1:41363
-```
-
-当前示例服务器就是这种情况，所以需要显式传 `--management-url http://127.0.0.1:41363`。
+- 直接运行 CPA 且未改默认目录，通常是 `~/.cli-proxy-api`。
+- Docker 部署时，填宿主机挂载出来的认证目录，不要填容器内路径。
+- 不确定时，先查看 CPA 的 compose、启动脚本或配置里的认证目录挂载。
 
 ## 最短使用流程
 
-在仓库根目录执行：
+在仓库根目录执行。下面命令使用 CPA 默认管理端口和默认认证目录，适合本机直接运行 CPA 的情况：
 
 ```bash
-cd /home/admin/tools
+cd /path/to/tools
 ```
 
-先让 Python 子进程能读到管理密钥。如果当前 shell 已经有 `CPA_SECRET_KEY`，但没有导出，执行：
+先设置管理密钥：
 
 ```bash
-export CPA_SECRET_KEY
+export CPA_SECRET_KEY='your-management-key'
+```
+
+确认 Python 子进程能读到密钥：
+
+```bash
 python3 -c 'import os; print("python sees key:", bool(os.environ.get("CPA_SECRET_KEY")))'
 ```
 
@@ -61,17 +68,17 @@ python sees key: True
 ```bash
 python3 tools.py cpa-auth-file-cleaner \
   --source management \
-  --management-url http://127.0.0.1:41363 \
-  --auth-dir /srv/CLIProxyAPI/auths
+  --match invalidated \
+  --auth-dir ~/.cli-proxy-api
 ```
 
-确认输出后，再执行移动：
+确认命中文件符合预期后，再执行移动：
 
 ```bash
 python3 tools.py cpa-auth-file-cleaner \
   --source management \
-  --management-url http://127.0.0.1:41363 \
-  --auth-dir /srv/CLIProxyAPI/auths \
+  --match invalidated \
+  --auth-dir ~/.cli-proxy-api \
   --execute
 ```
 
@@ -84,6 +91,61 @@ python3 tools.py cpa-auth-file-cleaner \
 - 移动后复扫结果；
 - 源文件已不存在的跳过数量；
 - `verification.status` 校验状态。
+
+## 当前服务器示例
+
+当前服务器的 CPA 项目在 `/srv/CLIProxyAPI`，工具仓库在 `/home/admin/tools`，CPA 容器把管理端口映射为 `41363:8317`。因此要显式传：
+
+```bash
+--management-url http://127.0.0.1:41363
+--auth-dir /srv/CLIProxyAPI/auths
+```
+
+当前服务器 dry-run：
+
+```bash
+cd /home/admin/tools
+# 如果当前 shell 已经有 CPA_SECRET_KEY，这行会把它导出给 Python
+export CPA_SECRET_KEY
+python3 tools.py cpa-auth-file-cleaner \
+  --source management \
+  --management-url http://127.0.0.1:41363 \
+  --match invalidated \
+  --auth-dir /srv/CLIProxyAPI/auths
+```
+
+当前服务器执行移动：
+
+```bash
+# 如果当前 shell 已经有 CPA_SECRET_KEY，这行会把它导出给 Python
+export CPA_SECRET_KEY
+python3 tools.py cpa-auth-file-cleaner \
+  --source management \
+  --management-url http://127.0.0.1:41363 \
+  --match invalidated \
+  --auth-dir /srv/CLIProxyAPI/auths \
+  --execute
+```
+
+如果当前 shell 已经有 `CPA_SECRET_KEY`，但 Python 读不到，执行：
+
+```bash
+export CPA_SECRET_KEY
+```
+
+当前服务器的 systemd 服务会读取 `/etc/cpa-auth-file-cleaner.env`。手动执行命令时仍建议先 `export CPA_SECRET_KEY`，因为普通用户进程不一定有权限读取 root 拥有的 env 文件。
+
+## 我该用哪条命令
+
+| 目标 | 推荐命令模式 | 说明 |
+|---|---|---|
+| 第一次确认会命中哪些文件 | `--source management`，不加 `--execute` | 最安全，只扫描不移动 |
+| 挪走授权失效文件 | `--source management --execute` | 执行前先跑一次 dry-run |
+| CPA 使用 Docker 映射端口 | 额外传 `--management-url http://127.0.0.1:<宿主机端口>` | 端口用宿主机端口，不是容器内端口 |
+| 只检查 JSON 文件内容 | 不传 `--source management` | 只能识别文件里已经写入的错误标记 |
+| 定时自动清理 | `--install-service --execute` | 先用 `--print-service-units` 预览 |
+
+新手优先使用 `--source management --match invalidated`。`problem` 和 `warning` 会扩大命中范围，不适合作为默认清理模式。
 
 ## 管理密钥
 
@@ -136,6 +198,8 @@ python3 -c 'import os; print(bool(os.environ.get("CPA_SECRET_KEY")))'
 ```bash
 export CPA_SECRET_KEY
 ```
+
+长期运行或 systemd 场景优先使用 env 文件，因为 systemd 不会自动继承你当前 shell 里的变量。env 文件内容可以不写 `export`，工具会同时兼容 `CPA_SECRET_KEY=value` 和 `export CPA_SECRET_KEY=value`。
 
 ## 输出怎么理解
 
@@ -204,9 +268,38 @@ source_missing
 
 这表示 CPA 管理中心返回了失效状态，但对应认证文件已经不在 `auth-dir` 中。工具会跳过这些条目，不会因为它们让整次执行失败。
 
+## 常见问题
+
+| 现象 | 通常原因 | 处理方式 |
+|---|---|---|
+| `error: management key is required` | Python 进程读不到管理密钥 | 执行 `export CPA_SECRET_KEY`，或写入 `/etc/cpa-auth-file-cleaner.env` |
+| `management API request failed` | `--management-url` 不可访问或端口填错 | 检查 CPA 是否运行、Docker 端口映射、反向代理地址 |
+| `management API returned HTTP 401/403` | 管理密钥不匹配 | 对齐 CPA 配置里的 `remote-management.secret-key` |
+| `auth directory does not exist` | `--auth-dir` 填成了容器内路径或不存在的目录 | 改成宿主机上的认证目录 |
+| dry-run 命中为 0，但管理中心有问题文件 | 使用了文件内容模式，或 `--match` 不对 | 授权失效清理应使用 `--source management --match invalidated` |
+| `Verification: stale_management_state` | 文件已移走，管理中心仍保留旧运行时状态 | 通常不是移动失败，关注 `Post-scan active files still present` 是否为 0 |
+| `Missing source files` | 管理中心返回的文件已经不在认证目录 | 工具会跳过，必要时重启或刷新 CPA 状态 |
+
+## 恢复被隔离文件
+
+工具不会删除认证文件，只会移动到隔离目录。默认位置是：
+
+```text
+<auth-dir>-invalidated/<YYYYMMDD>/<HHMMSS>/
+```
+
+如果确认某个文件需要恢复，可以从对应隔离目录手动移回 `auth-dir`。恢复前先确认 CPA 不会立刻再次把它标记为失效，否则下一次定时任务还会再次隔离。
+
 ## 注册为 systemd 定时服务
 
 定时服务使用 systemd `service + timer`。默认每 1 分钟执行一次，可以用 `--service-interval` 修改。
+
+建议按这个顺序部署：
+
+1. 手动 dry-run，确认 `--management-url`、`--auth-dir`、密钥都正确。
+2. 准备 env 文件。
+3. 用 `--print-service-units` 预览 unit。
+4. 确认 `ExecStart` 后再 `--install-service`。
 
 先准备 env 文件：
 
@@ -254,6 +347,8 @@ Commands:
 ```
 
 `-> 0` 表示 systemd 命令成功。
+
+重复执行 `--install-service` 会覆盖同名 service/timer unit，并重新 `daemon-reload`、启用 timer。已经存在的隔离文件不会被删除。
 
 检查 timer：
 
@@ -304,6 +399,7 @@ export CPA_SECRET_KEY='your-management-key'
 python3 clean_cpa_auths.py \
   --source management \
   --management-url http://127.0.0.1:41363 \
+  --match invalidated \
   --auth-dir /srv/CLIProxyAPI/auths
 ```
 
@@ -313,6 +409,7 @@ python3 clean_cpa_auths.py \
 python3 clean_cpa_auths.py \
   --source management \
   --management-url http://127.0.0.1:41363 \
+  --match invalidated \
   --auth-dir /srv/CLIProxyAPI/auths \
   --execute
 ```
