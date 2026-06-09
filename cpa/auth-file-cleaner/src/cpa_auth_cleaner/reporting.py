@@ -35,6 +35,10 @@ def render_text_report(
     lines.append(f"  Planned moves: {moves['planned_count']}")
     lines.append(f"  Moved files: {moves['moved_count']}")
     lines.append(f"  Not moved: {moves['not_moved_count']}")
+    if moves["skipped_count"]:
+        lines.append(f"  Skipped moves: {moves['skipped_count']}")
+    if moves["missing_source_count"]:
+        lines.append(f"  Missing source files: {moves['missing_source_count']}")
     lines.append(f"  Providers: {format_counts(pre_summary['provider_counts'])}")
     lines.append(f"  Error codes: {format_counts(pre_summary['error_code_counts'])}")
 
@@ -53,7 +57,8 @@ def render_text_report(
         lines.append("")
         lines.append("Move plan:" if dry_run else "Moved:")
         for record in records:
-            lines.append(f"  - {record.source} -> {record.destination}")
+            suffix = move_record_suffix(record)
+            lines.append(f"  - {record.source} -> {record.destination}{suffix}")
 
     if dry_run and report.invalid_files:
         lines.append("")
@@ -136,6 +141,7 @@ def render_json_report(
                 "source": str(record.source),
                 "destination": str(record.destination),
                 "moved": record.moved,
+                "skip_reason": getattr(record, "skip_reason", "") or None,
             }
             for record in records
         ],
@@ -158,6 +164,13 @@ def format_counts(counts) -> str:
     if not counts:
         return "-"
     return ", ".join(f"{key}={value}" for key, value in sorted(counts.items()))
+
+
+def move_record_suffix(record) -> str:
+    reason = getattr(record, "skip_reason", "")
+    if not reason:
+        return ""
+    return f" ({reason})"
 
 
 def display_path(path: Path) -> str:

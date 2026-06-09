@@ -112,7 +112,12 @@ def scan_management_payload(payload, match_mode="invalidated", auth_dir=None):
         if is_runtime_only(item):
             continue
         if matches_management_status(item, match_mode):
-            invalid_files.append(build_management_candidate(base, item, match_mode))
+            try:
+                invalid_files.append(build_management_candidate(base, item, match_mode))
+            except ValueError as exc:
+                skipped_files.append(
+                    SkippedFile(path=management_entry_path(item), reason=str(exc))
+                )
 
     return ScanReport(
         auth_dir=base or Path(""),
@@ -203,7 +208,12 @@ def build_management_candidate(base, item, match_mode):
     name = string_value(item, "name") or string_value(item, "id") or "<unknown>"
     path_text = string_value(item, "path")
     relative_path = management_relative_path(name, path_text)
-    path = base / relative_path if base is not None else management_fallback_path(path_text, relative_path)
+    validate_management_relative_path(relative_path)
+    path = (
+        base / relative_path
+        if base is not None
+        else management_fallback_path(path_text, relative_path)
+    )
     status = string_value(item, "status")
     message = status_message(item)
     detail = status_error_detail(item, message)
@@ -236,6 +246,16 @@ def management_fallback_path(path_text, relative_path):
     if path_text:
         return Path(path_text)
     return relative_path
+
+
+def validate_management_relative_path(path):
+    if path.is_absolute() or not path.parts or ".." in path.parts:
+        raise ValueError("unsafe_relative_path: %s" % path)
+
+
+def management_entry_path(item):
+    text = string_value(item, "name") or string_value(item, "path") or "<management>"
+    return Path(text)
 
 
 def management_reason(item, match_mode):

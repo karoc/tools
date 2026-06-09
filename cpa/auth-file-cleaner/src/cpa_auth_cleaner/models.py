@@ -38,7 +38,8 @@ class ScanReport:
 
 
 class MoveRecord:
-    def __init__(self, source, destination, moved):
+    def __init__(self, source, destination, moved, skip_reason=""):
         self.source = source
         self.destination = destination
         self.moved = moved
+        self.skip_reason = skip_reason

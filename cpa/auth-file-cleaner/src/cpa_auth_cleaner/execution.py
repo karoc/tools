@@ -40,11 +40,19 @@ def post_scan_file_state(report):
 
 def move_summary(records):
     moved_count = sum(1 for record in records if record.moved)
+    skipped_count = sum(1 for record in records if getattr(record, "skip_reason", ""))
+    missing_source_count = sum(
+        1
+        for record in records
+        if getattr(record, "skip_reason", "") == "source_missing"
+    )
     planned_count = len(records)
     return {
         "planned_count": planned_count,
         "moved_count": moved_count,
         "not_moved_count": planned_count - moved_count,
+        "skipped_count": skipped_count,
+        "missing_source_count": missing_source_count,
     }
 
 
@@ -76,10 +84,13 @@ def execution_verification(records, post_report, quarantine, post_scan_error="")
 
     checks = [
         verification_check(
-            name="all_planned_moves_completed",
-            ok=moves["moved_count"] == moves["planned_count"],
+            name="all_required_moves_completed",
+            ok=(
+                moves["moved_count"] + moves["missing_source_count"]
+                == moves["planned_count"]
+            ),
             expected=moves["planned_count"],
-            actual=moves["moved_count"],
+            actual=moves["moved_count"] + moves["missing_source_count"],
         ),
         verification_check(
             name="moved_destinations_exist",

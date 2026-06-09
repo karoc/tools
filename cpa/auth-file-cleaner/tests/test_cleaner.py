@@ -16,7 +16,7 @@ from cpa_auth_cleaner.constants import (  # noqa: E402
     INVALIDATED_ERROR_MESSAGE,
     INVALIDATED_ERROR_TYPE,
 )
-from cpa_auth_cleaner.execution import execution_verification  # noqa: E402
+from cpa_auth_cleaner.execution import execution_verification, move_summary  # noqa: E402
 from cpa_auth_cleaner.management import scan_management_payload  # noqa: E402
 from cpa_auth_cleaner.management import management_key_from_args  # noqa: E402
 from cpa_auth_cleaner.models import InvalidAuthFile, MoveRecord, ScanReport  # noqa: E402
@@ -109,6 +109,33 @@ class CPAAuthCleanerTests(unittest.TestCase):
             self.assertFalse((nested / "invalid.json").exists())
             self.assertTrue((move_dir / "nested" / "invalid.json").exists())
             self.assertTrue((auth_dir / "valid.json").exists())
+
+    def test_execute_skips_missing_source_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            auth_dir = Path(temp) / "auths"
+            move_dir = Path(temp) / "moved"
+            auth_dir.mkdir()
+            missing = auth_dir / "missing.json"
+            item = invalid_auth_file(missing, Path("missing.json"))
+
+            records = move_invalid_files(auth_dir, (item,), move_dir, dry_run=False)
+            summary = move_summary(records)
+
+            self.assertEqual(len(records), 1)
+            self.assertFalse(records[0].moved)
+            self.assertEqual(records[0].skip_reason, "source_missing")
+            self.assertEqual(summary["missing_source_count"], 1)
+            self.assertFalse(move_dir.exists())
+
+    def test_rejects_relative_path_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            auth_dir = Path(temp) / "auths"
+            move_dir = Path(temp) / "moved"
+            auth_dir.mkdir()
+            item = invalid_auth_file(auth_dir / ".." / "outside.json", Path("../outside.json"))
+
+            with self.assertRaises(ValueError):
+                move_invalid_files(auth_dir, (item,), move_dir, dry_run=False)
 
     def test_rejects_move_dir_inside_auth_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -358,7 +385,7 @@ class CPAAuthCleanerTests(unittest.TestCase):
                 "--service-interval",
                 "5min",
                 "--service-env-file",
-                "/etc/cpa-auth-file-cleaner.env",
+                "/etc/custom-cpa-auth-cleaner.env",
                 "--service-user",
                 "admin",
                 "--json",
@@ -373,11 +400,13 @@ class CPAAuthCleanerTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["interval"], "5min")
         self.assertIn("OnUnitActiveSec=5min", payload["timer_unit"])
-        self.assertIn("EnvironmentFile=-/etc/cpa-auth-file-cleaner.env", payload["service_unit"])
+        self.assertIn("EnvironmentFile=-/etc/custom-cpa-auth-cleaner.env", payload["service_unit"])
         self.assertIn("User=admin", payload["service_unit"])
         self.assertIn("--execute", payload["run_args"])
         self.assertIn("--management-key-env", payload["run_args"])
+        self.assertIn("--management-env-file", payload["run_args"])
         self.assertIn("CPA_SECRET_KEY", payload["run_args"])
+        self.assertIn("/etc/custom-cpa-auth-cleaner.env", payload["run_args"])
 
     def test_management_service_uses_cpa_defaults(self) -> None:
         result = subprocess.run(
@@ -403,6 +432,7 @@ class CPAAuthCleanerTests(unittest.TestCase):
         self.assertEqual(payload["interval"], "1min")
         self.assertIn("http://127.0.0.1:8317", payload["run_args"])
         self.assertIn("CPA_SECRET_KEY", payload["run_args"])
+        self.assertIn("/etc/cpa-auth-file-cleaner.env", payload["run_args"])
 
     def test_service_registration_rejects_plain_management_key(self) -> None:
         result = subprocess.run(
@@ -570,6 +600,20 @@ class CPAAuthCleanerTests(unittest.TestCase):
         )
         self.assertEqual(report.invalid_files[0].relative_path, Path("container-path.json"))
 
+    def test_management_skips_unsafe_relative_paths(self) -> None:
+        payload = {
+            "files": [
+                {"name": "../outside.json", "status_message": INVALIDATED_ERROR_MESSAGE},
+                {"name": "safe.json", "status_message": INVALIDATED_ERROR_MESSAGE},
+            ]
+        }
+
+        report = scan_management_payload(payload, match_mode="invalidated", auth_dir="/auths")
+
+        self.assertEqual([item.relative_path for item in report.invalid_files], [Path("safe.json")])
+        self.assertEqual(len(report.skipped_files), 1)
+        self.assertIn("unsafe_relative_path", report.skipped_files[0].reason)
+
     def test_management_invalidated_mode_parses_status_message_json(self) -> None:
         exact_invalidated = status_error_json(INVALIDATED_ERROR_MESSAGE)
         alternate_invalidated = status_error_json(
@@ -620,6 +664,19 @@ def status_error_json(message):
                 "code": INVALIDATED_ERROR_CODE,
             }
         }
+    )
+
+
+def invalid_auth_file(path: Path, relative_path: Path) -> InvalidAuthFile:
+    return InvalidAuthFile(
+        path=path,
+        relative_path=relative_path,
+        provider="codex",
+        email=None,
+        project_id=None,
+        error_message=INVALIDATED_ERROR_MESSAGE,
+        error_type=INVALIDATED_ERROR_TYPE,
+        error_code=INVALIDATED_ERROR_CODE,
     )
 
 

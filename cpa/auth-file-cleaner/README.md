@@ -82,6 +82,7 @@ python3 tools.py cpa-auth-file-cleaner \
 - 隔离目录路径；
 - 隔离目录实际文件数；
 - 移动后复扫结果；
+- 源文件已不存在的跳过数量；
 - `verification.status` 校验状态。
 
 ## 管理密钥
@@ -194,6 +195,15 @@ Post-scan management-only stale entries: 17
 
 这表示文件层面已经清理完成，只是 CPA 管理中心还保留了运行时状态。
 
+如果看到：
+
+```text
+Missing source files: 3
+source_missing
+```
+
+这表示 CPA 管理中心返回了失效状态，但对应认证文件已经不在 `auth-dir` 中。工具会跳过这些条目，不会因为它们让整次执行失败。
+
 ## 注册为 systemd 定时服务
 
 定时服务使用 systemd `service + timer`。默认每 1 分钟执行一次，可以用 `--service-interval` 修改。
@@ -204,6 +214,8 @@ Post-scan management-only stale entries: 17
 sudo install -m 600 /dev/null /etc/cpa-auth-file-cleaner.env
 sudo sh -c 'printf "%s\n" "CPA_SECRET_KEY=your-management-key" > /etc/cpa-auth-file-cleaner.env'
 ```
+
+安装服务时，`--service-env-file` 会同时写入 systemd 的 `EnvironmentFile`，并写入工具运行参数 `--management-env-file`。这样即使手动复制 unit 或 systemd 没有加载到环境变量，工具也会读取同一个 env 文件。
 
 先预览 unit，不写系统：
 
@@ -334,11 +346,13 @@ python3 tools.py cpa-auth-file-cleaner --auth-dir ~/.cli-proxy-api --execute
 |---|---|---|
 | `--source` | `file-marker` | `management` 读取 CPA 运行时状态；`file-marker` 扫描 JSON 文件内容 |
 | `--management-url` | `http://127.0.0.1:8317` | CPA 管理接口地址；Docker 映射端口时必须显式传宿主机端口 |
+| `--management-env-file` | `/etc/cpa-auth-file-cleaner.env` | 管理密钥 env 文件；命令行直接执行时可作为环境变量 fallback |
 | `--auth-dir` | `~/.cli-proxy-api` | 宿主机上的认证文件目录 |
 | `--match` | `invalidated` | `invalidated` 只扫授权失效；`problem` 复现管理中心问题凭证筛选；`warning` 扫非健康状态 |
 | `--execute` | 不启用 | 不传时只 dry-run；传入后才移动文件 |
 | `--move-dir` | `<auth-dir>-invalidated/<YYYYMMDD>/<HHMMSS>` | 隔离目录 |
 | `--json` | 不启用 | 输出机器可读 JSON |
+| `--service-env-file` | `/etc/cpa-auth-file-cleaner.env` | systemd `EnvironmentFile`，注册服务时也会同步给 `--management-env-file` |
 | `--service-interval` | `1min` | systemd timer 间隔 |
 
 ## 安全策略
@@ -348,6 +362,8 @@ python3 tools.py cpa-auth-file-cleaner --auth-dir ~/.cli-proxy-api --execute
 - 管理 API 密钥建议通过 `CPA_SECRET_KEY` 或 env 文件传入，避免出现在 shell history 中。
 - 移动目录不允许位于 `auth-dir` 内部，避免 CPA 继续读取被移走的 `.json` 文件。
 - 移动时保留相对路径；目标文件已存在时自动追加序号，避免覆盖。
+- 管理接口返回不安全相对路径时会跳过，避免移动认证目录外的文件。
+- 管理接口返回的源文件已不存在时会跳过，并计入 `source_missing`。
 - 无法解析的 JSON 文件会被计入 skipped，不会被移动。
 - 执行后会自动复扫，并区分真正失败和 CPA 管理中心状态残留。
 

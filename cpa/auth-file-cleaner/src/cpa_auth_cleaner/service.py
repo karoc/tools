@@ -90,6 +90,8 @@ def build_service_run_args(args):
             raise ValueError("--management-url is required for management service registration")
         run_args.extend(["--management-url", args.management_url])
         run_args.extend(["--management-key-env", args.management_key_env])
+        if args.service_env_file.strip():
+            run_args.extend(["--management-env-file", args.service_env_file])
         run_args.extend(["--match", args.match])
     if args.execute:
         run_args.append("--execute")
